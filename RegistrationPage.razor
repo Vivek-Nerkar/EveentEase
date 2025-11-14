@@ -1,0 +1,127 @@
+﻿@page "/register/{id:guid}"
+@using EventEase.Models
+@inject EventEase.Services.IEventService EventService
+@inject EventEase.Services.ISessionService SessionService
+@inject EventEase.Services.IAttendanceService AttendanceService
+@inject NavigationManager Nav
+@using System.ComponentModel.DataAnnotations
+
+<h2>Register</h2>
+
+@if (IsLoading)
+{
+    <div>Loading...</div>
+}
+else if (Current == null)
+{
+    <div class="alert alert-warning">Event not found.</div>
+}
+else if (RegisteredSuccessfully)
+{
+    <div class="alert alert-success">
+        <h4>Registration Complete</h4>
+        <p>Thanks, @RegisteredRecord.AttendeeName! A confirmation has been recorded.</p>
+        <p><strong>Event:</strong> @Current.Name</p>
+        <p><strong>Registered at:</strong> @RegisteredRecord.RegisteredAt.ToLocalTime().ToString("f")</p>
+        <button class="btn btn-primary" @onclick="GoToDetails">Back to Details</button>
+    </div>
+}
+else
+{
+    <div class="card p-3 mb-2">
+        <h3>Register for @Current.Name</h3>
+        <div><strong>Date:</strong> @Current.Date.ToString("yyyy-MM-dd")</div>
+        <div><strong>Location:</strong> @Current.Location</div>
+        <div><small>@(AttendanceService.CountByEventAsync(Current.Id)) registered so far</small></div>
+    </div>
+
+    <!-- NOTE: we bind to the instance 'RegModel' (not the type name) -->
+    <EditForm Model="@RegModel" OnValidSubmit="OnSubmitAsync">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="mb-2">
+            <label>Name</label>
+            <InputText class="form-control" @bind-Value="RegModel.AttendeeName" />
+            <ValidationMessage For="@(() => RegModel.AttendeeName)" />
+        </div>
+        <div class="mb-2">
+            <label>Email</label>
+            <InputText class="form-control" @bind-Value="RegModel.Email" />
+            <ValidationMessage For="@(() => RegModel.Email)" />
+        </div>
+        <button type="submit" class="btn btn-success">Submit</button>
+    </EditForm>
+}
+
+@code {
+    [Parameter] public Guid id { get; set; }
+
+    private Event? Current;
+    private bool IsLoading = true;
+
+    // <-- Create an instance (object) that EditForm can use
+    private RegistrationModel RegModel { get; set; } = new RegistrationModel();
+
+    private bool RegisteredSuccessfully = false;
+    private AttendanceRecord RegisteredRecord = new AttendanceRecord();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        IsLoading = true;
+        Current = null;
+        try
+        {
+            Current = await EventService.FindAsync(id);
+
+            // optionally prefill from saved session
+            var session = await SessionService.GetCurrentAsync();
+            if (session != null)
+            {
+                if (string.IsNullOrWhiteSpace(RegModel.AttendeeName))
+                    RegModel.AttendeeName = session.AttendeeName ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(RegModel.Email))
+                    RegModel.Email = session.Email ?? string.Empty;
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task OnSubmitAsync()
+    {
+        if (Current == null) return;
+
+        // prepare attendance record using the instance 'RegModel'
+        var record = new AttendanceRecord
+        {
+            EventId = Current.Id,
+            AttendeeName = RegModel.AttendeeName?.Trim() ?? string.Empty,
+            Email = RegModel.Email?.Trim() ?? string.Empty,
+            RegisteredAt = DateTime.UtcNow,
+            Confirmed = true
+        };
+
+        await AttendanceService.AddAsync(record);
+        RegisteredRecord = record;
+        RegisteredSuccessfully = true;
+
+        // persist a session for convenience
+        var existing = await SessionService.GetCurrentAsync() ?? new Session();
+        existing.AttendeeName = record.AttendeeName;
+        existing.Email = record.Email;
+        await SessionService.SaveAsync(existing);
+        await SessionService.TouchAsync();
+    }
+    // in @code
+    private async Task OnEventUpdatedAsync(Event ev)
+    {
+        await EventService.UpdateAsync(ev);
+        StateHasChanged();
+    }
+
+
+    private void GoToDetails() => Nav.NavigateTo($"/details/{id}");
+}

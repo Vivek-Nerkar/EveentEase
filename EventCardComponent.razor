@@ -1,0 +1,118 @@
+﻿@using EventEase.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject ILogger<EventCardComponent> Logger
+
+<div class="card p-3 mb-3" style="border:1px solid #ddd; border-radius:8px;">
+    @if (!EditMode)
+    {
+        <h3>@EventItem?.Name</h3>
+        <div><strong>Date:</strong> @EventItem?.Date.ToString("yyyy-MM-dd")</div>
+        <div><strong>Location:</strong> @EventItem?.Location</div>
+        <div class="mt-2">
+            <button class="btn btn-outline-primary me-2" @onclick="ToggleEdit">Edit</button>
+            @if (EventItem != null)
+            {
+                <NavLink class="btn btn-primary" href=$"/details/@EventItem.Id">Details</NavLink>
+            }
+        </div>
+    }
+    else
+    {
+        <h3>Edit Event</h3>
+
+        <EditForm Model="LocalCopy" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="mb-2">
+                <label class="form-label">Name</label>
+                <InputText class="form-control" @bind-Value="LocalCopy.Name" />
+                <ValidationMessage For="@(() => LocalCopy.Name)" />
+            </div>
+
+            <div class="mb-2">
+                <label class="form-label">Date</label>
+                <InputDate class="form-control" @bind-Value="LocalCopy.Date" />
+                <ValidationMessage For="@(() => LocalCopy.Date)" />
+            </div>
+
+            <div class="mb-2">
+                <label class="form-label">Location</label>
+                <InputText class="form-control" @bind-Value="LocalCopy.Location" />
+                <ValidationMessage For="@(() => LocalCopy.Location)" />
+            </div>
+
+            <div class="mt-2">
+                <button class="btn btn-success me-2" type="submit">Save</button>
+                <button class="btn btn-secondary" type="button" @onclick="Cancel">Cancel</button>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public Event? EventItem { get; set; }
+    [Parameter] public EventCallback<Event> EventItemChanged { get; set; }
+    [Parameter] public EventCallback<Guid> OnRequestDelete { get; set; }
+
+    private Event LocalCopy = new Event();
+    private bool EditMode;
+
+    protected override void OnParametersSet()
+    {
+        // Defensive copy to avoid accidental reference sharing
+        if (EventItem != null)
+        {
+            LocalCopy = new Event
+            {
+                Id = EventItem.Id,
+                Name = EventItem.Name,
+                Date = EventItem.Date,
+                Location = EventItem.Location,
+                Description = EventItem.Description
+            };
+        }
+        else
+        {
+            LocalCopy = new Event { Date = DateTime.Today };
+        }
+    }
+
+    private void ToggleEdit() => EditMode = true;
+
+    private async Task SaveAsync()
+    {
+        // Validate server-side minimal rules (extra safety)
+        if (string.IsNullOrWhiteSpace(LocalCopy.Name))
+        {
+            Logger.LogWarning("Attempted to save event with empty name.");
+            return;
+        }
+        if (LocalCopy.Date < new DateTime(2000, 1, 1))
+        {
+            Logger.LogWarning("Attempted to save event with unrealistic date.");
+            return;
+        }
+
+        // Apply sanitized data back to parent model (if present)
+        if (EventItem != null)
+        {
+            EventItem.Name = LocalCopy.Name.Trim();
+            EventItem.Date = LocalCopy.Date;
+            EventItem.Location = LocalCopy.Location?.Trim() ?? string.Empty;
+
+            if (EventItemChanged.HasDelegate)
+            {
+                await EventItemChanged.InvokeAsync(EventItem);
+            }
+        }
+
+        EditMode = false;
+    }
+
+    private void Cancel()
+    {
+        EditMode = false;
+        StateHasChanged();
+    }
+}

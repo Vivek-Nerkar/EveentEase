@@ -1,0 +1,56 @@
+﻿@page "/details/{id:guid}"
+@inject EventEase.Services.IEventService EventService
+@inject NavigationManager Nav
+@using EventEase.Models
+
+<h2>Event Details</h2>
+
+@if (IsLoading)
+{
+    <div>Loading...</div>
+}
+else if (Current == null)
+{
+    <div class="alert alert-warning">Event not found. <button class="btn btn-link" @onclick="GoHome">Go to list</button></div>
+}
+else
+{
+    <div class="card p-3">
+        <h3>@Current.Name</h3>
+        <div><strong>Date:</strong> @Current.Date.ToString("yyyy-MM-dd")</div>
+        <div><strong>Location:</strong> @Current.Location</div>
+        <div class="mt-3">
+            <NavLink class="btn btn-primary me-2" href=$"/register/@Current.Id">Register</NavLink>
+            <button class="btn btn-secondary" @onclick="Back">Back</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid id { get; set; }
+    private Event? Current;
+    private bool IsLoading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        IsLoading = true;
+        Current = null;
+
+        try
+        {
+            Current = await EventService.FindAsync(id);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error fetching details for {id}: {ex.Message}");
+            Current = null;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void Back() => Nav.NavigateTo("/");
+    private void GoHome() => Nav.NavigateTo("/");
+}

@@ -1,0 +1,37 @@
+﻿@page "/"
+@inject EventEase.Services.IEventService EventService
+@using EventEase.Models
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+
+<h2>Events</h2>
+
+<Virtualize ItemsProvider="LoadEvents" Context="ev" ItemSize="80">
+    <ItemContent>
+        <EventCardComponent EventItem="ev" EventItemChanged="@(EventCallback.Factory.Create<Event>(this, OnEventUpdatedAsync))" />
+    </ItemContent>
+</Virtualize>
+
+@code {
+    private async ValueTask<ItemsProviderResult<Event>> LoadEvents(ItemsProviderRequest request)
+    {
+        var skip = request.StartIndex;
+        var take = request.Count;
+        var total = await EventService.CountAsync();
+        var items = await EventService.GetPagedAsync(skip, take);
+        return new ItemsProviderResult<Event>(items, total);
+    }
+
+    // Notice signature: must accept Event and return Task
+    private async Task OnEventUpdatedAsync(Event updated)
+    {
+        try
+        {
+            await EventService.UpdateAsync(updated);
+            StateHasChanged();
+        }
+        catch
+        {
+            StateHasChanged();
+        }
+    }
+}
